@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#123b78" />
+    <meta name="description" content="Control de horas a favor y pendientes del equipo de agentes UPANA." />
+    <title>Control de horas | UPANA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main id="loginScreen" class="login-screen">
+      <section class="login-art" aria-label="Control de horas UPANA">
+        <div class="login-brand"><span class="brand-mark">U</span><span>UPANA <small>CALL CENTER</small></span></div>
+        <div class="login-message">
+          <span class="eyebrow">GESTIÓN DE EQUIPO</span>
+          <h1>Las horas claras.<br />El equipo enfocado.</h1>
+          <p>Un espacio para registrar, consultar y dar seguimiento al balance de horas de cada agente.</p>
+        </div>
+        <div class="login-art-foot"><span class="sparkle">✳</span> Operación con claridad</div>
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+      </section>
+      <section class="login-panel">
+        <div class="login-card">
+          <div class="mobile-brand"><span class="brand-mark">U</span><span>UPANA <small>CALL CENTER</small></span></div>
+          <span class="eyebrow">BIENVENIDO/A</span>
+          <h2>Inicia sesión</h2>
+          <p class="muted">Ingresa con tu cuenta de trabajo para continuar.</p>
+          <form id="loginForm" class="form-stack">
+            <label>Correo electrónico<input id="loginEmail" type="email" autocomplete="username" placeholder="nombre@upana.edu.gt" required /></label>
+            <label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Tu contraseña" required /></label>
+            <button class="button button-primary button-wide" type="submit">Entrar <span aria-hidden="true">→</span></button>
+            <div id="loginMessage" class="form-message" role="status" aria-live="polite"></div>
+          </form>
+          <p class="login-note"><span class="lock-icon">▣</span> Acceso seguro con Firebase Authentication</p>
+        </div>
+      </section>
+    </main>
+
+    <div id="appScreen" class="app-screen hidden">
+      <aside class="sidebar">
+        <a class="sidebar-brand" href="#inicio"><span class="brand-mark">U</span><span>UPANA <small>CALL CENTER</small></span></a>
+        <div class="nav-caption">ESPACIO DE TRABAJO</div>
+        <nav><a class="nav-link active" href="#inicio"><span class="nav-icon">▦</span> Resumen</a><a class="nav-link" href="#agentes"><span class="nav-icon">♙</span> Agentes <span id="agentCountNav" class="nav-count">25</span></a></nav>
+        <div class="sidebar-bottom"><div class="sidebar-help"><span class="help-icon">✳</span><strong>Un balance al día</strong><span>Los movimientos quedan guardados en el historial.</span></div><div class="sidebar-footer">REPORTE DE HORAS <span>·</span> UPANA</div></div>
+      </aside>
+
+      <section class="main-area">
+        <header class="topbar"><div class="breadcrumb">Operaciones <span>/</span> <strong>Control de horas</strong></div><div class="topbar-user"><div class="user-avatar" id="userInitials">U</div><div class="user-meta"><strong id="userEmail">Usuario</strong><span id="userRole">Acceso autorizado</span></div><button id="logoutButton" class="icon-button" title="Cerrar sesión" aria-label="Cerrar sesión">↗</button></div></header>
+        <main class="content" id="inicio">
+          <div class="page-heading"><div><span class="eyebrow">PANEL DE OPERACIONES</span><h1>Control de horas</h1><p>Balance y seguimiento del equipo de agentes.</p></div><button id="addMovementTop" class="button button-primary"><span class="plus">＋</span> Registrar movimiento</button></div>
+
+          <section class="metric-grid" aria-label="Resumen de horas">
+            <article class="metric-card"><div class="metric-label">Agentes activos <span class="metric-icon blue">♙</span></div><div class="metric-value" id="metricAgents">25</div><div class="metric-foot">En el catálogo del equipo</div></article>
+            <article class="metric-card"><div class="metric-label">Horas a favor <span class="metric-icon green">↗</span></div><div class="metric-value" id="metricPositive">0.00 <small>h</small></div><div class="metric-foot">Saldo disponible del equipo</div></article>
+            <article class="metric-card"><div class="metric-label">Horas pendientes <span class="metric-icon amber">◷</span></div><div class="metric-value" id="metricPending">0.00 <small>h</small></div><div class="metric-foot">Por recuperar o pagar</div></article>
+            <article class="metric-card"><div class="metric-label">Movimientos <span class="metric-icon violet">⌁</span></div><div class="metric-value" id="metricMovements">0</div><div class="metric-foot">Registros en el período</div></article>
+          </section>
+
+          <section class="panel agents-panel" id="agentes">
+            <div class="panel-heading"><div><h2>Balance por agente</h2><p>Consulta el saldo y abre el historial de cada persona.</p></div><button id="exportButton" class="button button-secondary"><span class="download-icon">↓</span> Exportar CSV</button></div>
+            <div class="filters"><label class="search-field"><span>⌕</span><input id="searchInput" type="search" placeholder="Buscar por nombre o extensión" aria-label="Buscar agente" /></label><label class="select-wrap"><span class="filter-label">Estado</span><select id="statusFilter"><option value="all">Todos los saldos</option><option value="positive">Horas a favor</option><option value="negative">Pendiente</option><option value="zero">Sin saldo</option></select></label><label class="select-wrap"><span class="filter-label">Período</span><select id="periodFilter"><option value="all">Todo el historial</option><option value="month">Este mes</option><option value="quarter">Últimos 3 meses</option></select></label></div>
+            <div class="table-scroll"><table><thead><tr><th>AGENTE</th><th>EXT.</th><th>HORAS A FAVOR</th><th>PENDIENTES</th><th>BALANCE NETO</th><th></th></tr></thead><tbody id="agentsTable"><tr><td colspan="6" class="empty-state">Preparando información…</td></tr></tbody></table></div>
+            <div class="table-footer"><span id="tableCount">Mostrando 25 agentes</span><span class="table-legend"><i class="dot positive-dot"></i> A favor <i class="dot pending-dot"></i> Pendiente</span></div>
+          </section>
+          <footer class="page-footer">UPANA <span>·</span> Control interno de horas <span>·</span> <span id="lastUpdated">Datos sincronizados</span></footer>
+        </main>
+      </section>
+    </div>
+
+    <div id="detailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailName"><div class="modal-backdrop" data-close="detail"></div><section class="modal-card detail-card"><button class="modal-close" data-close="detail" aria-label="Cerrar">×</button><div class="detail-head"><div class="agent-avatar large" id="detailAvatar">A</div><div><span class="eyebrow">DETALLE DEL AGENTE</span><h2 id="detailName">Agente</h2><p id="detailExt" class="muted">Extensión</p></div></div><div class="detail-balance"><div><span>Horas a favor</span><strong id="detailPositive">0.00 h</strong></div><div><span>Pendiente</span><strong id="detailPending">0.00 h</strong></div><div><span>Balance neto</span><strong id="detailNet">0.00 h</strong></div></div><div class="history-heading"><div><h3>Historial de movimientos</h3><p>Registros en orden cronológico.</p></div><button id="detailAddButton" class="button button-primary button-small">＋ Registrar</button></div><div id="historyList" class="history-list"></div></section></div>
+
+    <div id="movementModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="movementTitle"><div class="modal-backdrop" data-close="movement"></div><section class="modal-card movement-card"><button class="modal-close" data-close="movement" aria-label="Cerrar">×</button><span class="eyebrow">NUEVO REGISTRO</span><h2 id="movementTitle">Registrar movimiento</h2><p class="muted">El movimiento se agregará al historial del agente.</p><form id="movementForm" class="form-stack"><label>Agente<select id="movementAgent" required><option value="">Selecciona un agente</option></select></label><fieldset class="type-choice"><legend>Tipo de movimiento</legend><label class="choice-card selected"><input type="radio" name="movementType" value="favor" checked /><span class="choice-icon positive-choice">↗</span><span><strong>Horas a favor</strong><small>Aumenta el saldo disponible</small></span></label><label class="choice-card"><input type="radio" name="movementType" value="deuda" /><span class="choice-icon negative-choice">↙</span><span><strong>Horas pendientes</strong><small>Horas por recuperar o pagar</small></span></label></fieldset><label>Cantidad de horas<input id="movementHours" type="number" min="0.01" max="24" step="0.01" inputmode="decimal" placeholder="Ej. 2.50" required /><small class="field-hint">Ingresa un valor entre 0.01 y 24 horas.</small></label><label>Motivo o referencia<input id="movementNote" type="text" maxlength="180" placeholder="Ej. Cobertura de turno del 08/10" required /></label><div id="movementMessage" class="form-message" role="status" aria-live="polite"></div><div class="form-actions"><button type="button" class="button button-secondary" data-close="movement">Cancelar</button><button id="saveMovementButton" type="submit" class="button button-primary">Guardar movimiento</button></div></form></section></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

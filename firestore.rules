@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profileExists() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return profileExists() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function canRead() {
+      return activeUser() && role() in ['admin', 'editor', 'viewer'];
+    }
+
+    function canWrite() {
+      return activeUser() && role() in ['admin', 'editor'];
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || (activeUser() && role() == 'admin'));
+      allow list: if activeUser() && role() == 'admin';
+      allow create, update: if activeUser() && role() == 'admin'
+        && request.resource.data.keys().hasOnly(['role', 'active', 'displayName'])
+        && request.resource.data.role in ['admin', 'editor', 'viewer']
+        && request.resource.data.active is bool
+        && (!('displayName' in request.resource.data) || request.resource.data.displayName is string);
+      allow delete: if activeUser() && role() == 'admin';
+    }
+
+    match /movements/{movementId} {
+      allow read: if canRead();
+      allow create: if canWrite()
+        && request.resource.data.keys().hasAll(['agentId', 'agentName', 'type', 'signedHours', 'note', 'createdAt', 'createdBy', 'createdByEmail'])
+        && request.resource.data.keys().hasOnly(['agentId', 'agentName', 'type', 'signedHours', 'note', 'createdAt', 'createdBy', 'createdByEmail'])
+        && request.resource.data.agentId is string
+        && request.resource.data.agentName is string
+        && request.resource.data.type in ['favor', 'deuda']
+        && request.resource.data.signedHours is number
+        && request.resource.data.signedHours != 0
+        && request.resource.data.signedHours >= -24
+        && request.resource.data.signedHours <= 24
+        && ((request.resource.data.type == 'favor' && request.resource.data.signedHours > 0)
+          || (request.resource.data.type == 'deuda' && request.resource.data.signedHours < 0))
+        && request.resource.data.note is string
+        && request.resource.data.note.size() > 0
+        && request.resource.data.note.size() <= 180
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByEmail is string;
+      allow update, delete: if false;
+    }
+  }
+}
