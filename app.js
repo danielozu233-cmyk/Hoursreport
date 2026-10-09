@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, addDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const agents = [
@@ -39,7 +39,6 @@ const moneyHours = (value) => `${Math.abs(value).toFixed(2)} h`;
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 let movements = [];
 let activeUser = null;
-let activeRole = "viewer";
 let selectedAgent = null;
 let toastTimeout;
 
@@ -152,7 +151,7 @@ function showAgentDetail(agentId) {
     const amount = `${favorable ? "+" : "−"}${moneyHours(movement.signedHours)}`;
     return `<div class="history-item"><div class="history-symbol ${favorable ? "favor" : "deuda"}">${favorable ? "↗" : "↙"}</div><div class="history-copy"><strong>${escapeHtml(movement.note || "Movimiento registrado")}</strong><span>${formatDate(movement.createdAt)} · ${favorable ? "Horas a favor" : "Horas pendientes"}</span></div><div class="history-amount ${favorable ? "favor" : "deuda"}">${amount}</div></div>`;
   }).join("") : '<div class="empty-state">Todavía no hay movimientos para este agente.</div>';
-  byId("detailAddButton").classList.toggle("hidden", !["admin", "editor"].includes(activeRole));
+  byId("detailAddButton").classList.remove("hidden");
   openModal("detailModal");
 }
 
@@ -169,10 +168,9 @@ async function loadMovements() {
 }
 
 function updateRoleControls() {
-  const canWrite = ["admin", "editor"].includes(activeRole);
-  byId("addMovementTop").classList.toggle("hidden", !canWrite);
-  byId("detailAddButton").classList.toggle("hidden", !canWrite);
-  byId("userRole").textContent = activeRole === "admin" ? "Administración" : activeRole === "editor" ? "Registro de movimientos" : "Solo consulta";
+  byId("addMovementTop").classList.remove("hidden");
+  byId("detailAddButton").classList.remove("hidden");
+  byId("userRole").textContent = "Supervisor/a";
 }
 
 function populateAgents() {
@@ -295,7 +293,6 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     byId("appScreen").classList.add("hidden");
     byId("loginScreen").classList.remove("hidden");
-    activeRole = "viewer";
     movements = [];
     renderMetrics();
     return;
@@ -304,20 +301,6 @@ onAuthStateChanged(auth, async (user) => {
   byId("appScreen").classList.remove("hidden");
   byId("userEmail").textContent = user.email || "Usuario";
   byId("userInitials").textContent = (user.email || "U").slice(0, 1).toLocaleUpperCase("es");
-  try {
-    const profile = await getDoc(doc(db, "users", user.uid));
-    const profileData = profile.exists() ? profile.data() : {};
-    if (!profile.exists() || profileData.active !== true || !["admin", "editor", "viewer"].includes(profileData.role)) {
-      await signOut(auth);
-      setLoginMessage("Tu cuenta aún no está autorizada. Solicita acceso a la persona administradora.");
-      return;
-    }
-    activeRole = profileData.role;
-    updateRoleControls();
-    await loadMovements();
-  } catch (error) {
-    console.error("No se pudo validar el acceso", error);
-    await signOut(auth);
-    setLoginMessage("No se pudo validar tu autorización. Revisa las reglas de Firestore.");
-  }
+  updateRoleControls();
+  await loadMovements();
 });

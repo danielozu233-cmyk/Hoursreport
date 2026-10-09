@@ -10,36 +10,22 @@ Aplicación web en español para consultar el balance de horas por agente, regis
 - El catálogo completo de 25 agentes se mantiene en `app.js` con su extensión como identificador estable.
 - Los movimientos se guardan en `movements/{id}` con `agentId`, `agentName`, `type` (`favor` o `deuda`), `signedHours`, `note`, `createdAt`, `createdBy` y `createdByEmail`.
 - Los saldos se calculan sumando el historial: horas positivas son a favor; horas negativas son pendientes. Los movimientos no se pueden editar ni borrar desde el cliente.
-- Los perfiles de autorización se guardan en `users/{uid}` con `role` (`admin`, `editor` o `viewer`) y `active` (`true` o `false`). Solo administración gestiona perfiles; editores y admins registran movimientos.
+- El acceso se controla con Firebase Authentication. La aplicación no tiene registro público: solo entran las cuentas de supervisores que se creen en Firebase Console.
 
-Las reglas permiten leer datos solo a usuarios autenticados con perfil activo. El rol se valida en reglas de Firestore, así que ocultar botones en la interfaz no es la protección de seguridad. La configuración web Firebase es pública por diseño; la protección real está en Authentication y las reglas.
+Las reglas permiten consultar y registrar movimientos a cualquier cuenta autenticada. Por eso, crea en Firebase Authentication únicamente las cuentas autorizadas de supervisores y no habilites otro método de registro. Los movimientos no se pueden editar ni borrar desde la aplicación. La configuración web Firebase es pública por diseño; las reglas y el control de cuentas de Authentication protegen los datos.
 
 ## Activación en Firebase Console
 
 1. Abre el proyecto `lmsupana` en [Firebase Console](https://console.firebase.google.com/).
 2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**.
-3. En **Authentication → Users**, agrega las cuentas autorizadas. No existe registro público desde esta aplicación.
+3. En **Authentication → Users**, agrega las cuentas de los supervisores autorizados. No existe registro público desde esta aplicación.
 4. En **Firestore Database**, crea la base de datos si aún no existe.
 5. En **Firestore Database → Rules**, pega el contenido de `firestore.rules` y publícalo.
-6. En **Firestore Database → Data**, crea la colección `users`. Para cada usuario, usa su UID exacto como ID de documento y estos campos:
+6. Publica la carpeta completa en un hosting estático con HTTPS (por ejemplo Firebase Hosting). Añade el dominio del sitio a **Authentication → Settings → Authorized domains**. Para probar localmente, sirve la carpeta con un servidor local; abrir `index.html` directamente puede bloquear los módulos JavaScript.
 
-   ```
-   role: "admin"       // admin, editor o viewer
-   active: true
-   displayName: "Nombre de la persona"  // opcional
-   ```
+## Acceso de supervisores
 
-7. Crea primero el usuario en Authentication y luego el documento `users/{uid}` para asignar el primer admin. La aplicación no concede roles automáticamente.
-8. Publica la carpeta completa en un hosting estático con HTTPS (por ejemplo Firebase Hosting). Añade el dominio del sitio a **Authentication → Settings → Authorized domains**. Para probar localmente, sirve la carpeta con un servidor local; abrir `index.html` directamente puede bloquear los módulos JavaScript.
-
-## Roles
-
-- `admin`: lee datos, registra movimientos y administra perfiles en Firestore Console.
-- `editor`: lee datos y registra movimientos.
-- `viewer`: solo consulta y exporta CSV.
-- `active: false`: deniega el acceso aunque exista una sesión de Authentication.
-
-Para dar o retirar acceso, cambia el documento del usuario desde Firestore Console. No elimines reglas ni uses reglas abiertas de prueba. Las reglas incluidas son una base lista para desplegar y deben revisarse junto con la política interna de acceso de UPANA.
+Todas las cuentas de Firebase Authentication pueden consultar, registrar y exportar. Para dar o retirar acceso, agrega o elimina las cuentas correspondientes en **Authentication → Users**. Las reglas incluidas requieren sesión iniciada y no permiten editar o borrar movimientos.
 
 ## Uso
 
