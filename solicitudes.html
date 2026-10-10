@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#123b78" />
+    <meta name="description" content="Formulario de solicitud de horas para agentes del call center UPANA." />
+    <title>Solicitar horas | UPANA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="requests.js"></script>
+  </head>
+  <body class="public-request-page">
+    <header class="public-header"><a class="sidebar-brand" href="index.html"><span class="brand-mark">U</span><span>UPANA <small>CALL CENTER</small></span></a><a class="supervisor-link" href="index.html">Acceso supervisores <span>→</span></a></header>
+    <main class="public-request-layout">
+      <section class="public-intro"><span class="eyebrow">FORMULARIO PARA AGENTES</span><h1>Solicitud de horas</h1><p>Envía tu solicitud para que el equipo de supervisión la revise. Recibirás la confirmación por los canales internos.</p><div class="request-info-card"><span class="request-info-icon">◷</span><div><strong>¿Cómo funciona?</strong><p>Las horas a favor son tiempo extra que ya trabajaste. Las solicitudes de recuperación corresponden a tiempo que tomarás o debes recuperar. El saldo cambia cuando supervisión aprueba y llega la fecha del evento.</p></div></div><div class="request-flow"><span>01 <small>Completa</small></span><i></i><span>02 <small>Revisión</small></span><i></i><span>03 <small>Respuesta</small></span></div></section>
+      <section class="public-form-card">
+        <div id="requestSuccess" class="request-success hidden"><div class="success-mark">✓</div><span class="eyebrow">SOLICITUD ENVIADA</span><h2>Gracias, recibimos tu solicitud.</h2><p>Supervisión la revisará. El saldo no cambia hasta que sea aprobada.</p><button id="anotherRequestButton" class="button button-secondary">Enviar otra solicitud</button></div>
+        <form id="publicRequestForm" class="form-stack">
+          <div class="public-form-title"><h2>Datos de la solicitud</h2><p>Los campos con * son obligatorios.</p></div>
+          <label>Agente y extensión *<select id="requestAgent" required><option value="">Selecciona tu nombre</option></select></label>
+          <fieldset class="type-choice public-type-choice"><legend>¿Qué tipo de horas solicitas? *</legend><label class="choice-card selected"><input type="radio" name="requestType" value="favor" checked /><span class="choice-icon positive-choice">↗</span><span><strong>Horas a favor</strong><small>Tiempo extra ya trabajado</small></span></label><label class="choice-card"><input type="radio" name="requestType" value="recuperacion" /><span class="choice-icon negative-choice">↙</span><span><strong>Tiempo por recuperar</strong><small>Tiempo que tomarás y debes reponer</small></span></label></fieldset>
+          <p id="eventDateHint" class="field-hint public-hint">Para horas a favor, selecciona cuándo trabajaste el tiempo extra.</p>
+          <label>Fecha y hora del evento *<input id="requestEventAt" type="datetime-local" required /></label>
+          <fieldset class="duration-choice"><legend>Duración *</legend><label>Horas<input id="requestDurationHours" type="number" min="0" max="24" step="1" inputmode="numeric" value="0" required /></label><label>Minutos<input id="requestDurationMinutes" type="number" min="0" max="59" step="1" inputmode="numeric" value="30" required /></label></fieldset>
+          <label>Motivo *<textarea id="requestReason" rows="4" maxlength="500" minlength="8" placeholder="Cuéntanos brevemente el motivo de tu solicitud" required></textarea></label>
+          <div class="optional-fields"><span>DATOS DE CONTACTO <small>(opcionales)</small></span><label>Nombre<input id="contactName" type="text" maxlength="100" placeholder="Nombre para contactarte" /></label><div class="contact-row"><label>Correo<input id="contactEmail" type="email" maxlength="180" placeholder="correo@ejemplo.com" /></label><label>Teléfono<input id="contactPhone" type="tel" maxlength="40" placeholder="Número de contacto" /></label></div></div>
+          <p id="publicFormMessage" class="form-message" role="status" aria-live="polite"></p><button id="submitRequestButton" class="button button-primary button-wide" type="submit">Enviar solicitud <span aria-hidden="true">→</span></button><p class="public-privacy-note">Esta página solo envía solicitudes. No muestra balances ni información de otros agentes.</p>
+        </form>
+      </section>
+    </main>
+    <footer class="public-footer"><span>UPANA · Call Center</span><a href="index.html">Panel de supervisión</a></footer>
+  </body>
+</html>
