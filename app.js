@@ -40,6 +40,7 @@ const db = getFirestore(app);
 const functions = getFunctions(app, "us-central1");
 const reviewRequestCall = httpsCallable(functions, "reviewHourRequest");
 const byId = (id) => document.getElementById(id);
+const adminEmails = new Set(["jmjuarez@upana.edu.gt", "nozuna@upana.edu.gt", "ccoyoy@upana.edu.gt"]);
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 let movements = [];
 let hourRequests = [];
@@ -444,13 +445,13 @@ onAuthStateChanged(auth, async (user) => {
   byId("appScreen").classList.add("hidden");
   try {
     const token = await user.getIdTokenResult();
-    activeRole = token.claims.role;
-    if (!["supervisor", "admin"].includes(activeRole)) {
+    if (!token.claims.email_verified || !adminEmails.has((user.email || "").toLowerCase())) {
       await signOut(auth);
       byId("loginScreen").classList.remove("hidden");
-      setLoginMessage("Tu cuenta no tiene el rol de supervisor habilitado. Solicita acceso al administrador.");
+      setLoginMessage("Acceso solo para los correos autorizados. Verifica tu correo institucional y vuelve a iniciar sesión.");
       return;
     }
+    activeRole = "admin";
   } catch (error) {
     console.error("No se pudo verificar el rol de supervisión", error);
     await signOut(auth);

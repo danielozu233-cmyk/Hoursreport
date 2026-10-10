@@ -12,10 +12,15 @@ const allowedAgents = new Set([
   "8011", "8013", "8014", "8016", "8017", "8018", "8020", "8021", "8022",
   "8023", "8024", "8025", "8026", "8027", "8028", "8029"
 ]);
+const adminEmails = new Set([
+  "jmjuarez@upana.edu.gt",
+  "nozuna@upana.edu.gt",
+  "ccoyoy@upana.edu.gt"
+]);
 
 function requireSupervisor(request) {
-  const role = request.auth?.token?.role;
-  if (!request.auth || !["supervisor", "admin"].includes(role)) {
+  const email = request.auth?.token?.email?.toLowerCase();
+  if (!request.auth || request.auth.token.email_verified !== true || !adminEmails.has(email)) {
     throw new HttpsError("permission-denied", "Se requiere una cuenta de supervisión autorizada.");
   }
   return request.auth;

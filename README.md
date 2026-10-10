@@ -9,7 +9,6 @@ Sistema web en español para el control de horas del Call Center UPANA. Incluye 
 - `firebase-config.js`: configuración pública de la aplicación web Firebase del proyecto `lmsupana`.
 - `firestore.rules`: permisos y validaciones para solicitudes y movimientos.
 - `functions/index.js`: revisión transaccional de solicitudes y creación del movimiento asociado.
-- `functions/set-role.js`: herramienta administrativa local para asignar claims de supervisor o admin.
 - `firebase.json`, `.firebaserc`, `firestore.indexes.json`: configuración para desplegar Functions, reglas y Hosting.
 
 ## Datos y saldo
@@ -25,7 +24,7 @@ Cada evento guarda `eventAt` (fecha/hora en que ocurrieron o se programaron las 
 ## Seguridad
 
 - Firebase Authentication por correo/contraseña es solo para supervisores. No hay registro público.
-- Los roles se guardan en **custom claims** confiables de Firebase Authentication: `role: "supervisor"` o `role: "admin"`. La app no acepta roles enviados desde el navegador. El acceso al panel, las reglas y Cloud Functions verifican estos claims.
+- Los tres correos institucionales autorizados están definidos como administradores en el cliente, las reglas de Firestore y Cloud Functions. Las reglas y Functions verifican la identidad y el correo verificado del token de Firebase; no confían en roles editables desde el navegador.
 - La página pública solo puede crear documentos nuevos y validados en `hourRequests`. No puede leer solicitudes, balances ni movimientos. No puede cambiar el estado de una solicitud.
 - El código admite Firebase App Check con reCAPTCHA v3 para limitar envíos automatizados. Antes de exigir App Check en Firestore, registra la app web en **App Check**, agrega el dominio y coloca la site key pública en `appCheckSiteKey` de `firebase-config.js`.
 - Solo supervisores/admin pueden leer solicitudes y movimientos o crear movimientos manuales. Las decisiones pasan por Cloud Functions. Los movimientos existentes no se pueden editar ni borrar desde el cliente.
@@ -34,24 +33,15 @@ Cada evento guarda `eventAt` (fecha/hora en que ocurrieron o se programaron las 
 ## Preparar Firebase Console
 
 1. Abre el proyecto `lmsupana` en [Firebase Console](https://console.firebase.google.com/).
-2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**. En **Authentication → Users**, crea las cuentas de supervisores. No habilites registro público.
+2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**. En **Authentication → Users**, crea las cuentas `jmjuarez@upana.edu.gt`, `nozuna@upana.edu.gt` y `ccoyoy@upana.edu.gt` con contraseñas iniciales seguras. No habilites registro público. Cada titular debe verificar su correo institucional.
 3. Crea **Firestore Database** si aún no existe.
 4. Cloud Functions requiere el plan **Blaze** y facturación activa en el proyecto. El runtime configurado es Node.js 22, compatible con Cloud Functions según la [guía oficial de Firebase](https://firebase.google.com/docs/functions/get-started).
 5. Añade el dominio de Hosting a **Authentication → Settings → Authorized domains**.
 6. Antes de abrir el formulario al público, registra la app web en **App Check** con reCAPTCHA v3, coloca únicamente la site key pública en `appCheckSiteKey` de `firebase-config.js` y revisa las métricas. Mantén la secret key de reCAPTCHA en su consola; nunca la publiques en el sitio. Después activa la aplicación gradual de App Check para Cloud Firestore. Firebase recomienda inicializar App Check en la app web y revisar métricas antes de exigir tokens ([guía oficial](https://firebase.google.com/docs/app-check/web/recaptcha-provider)).
 
-## Asignar roles
+## Acceso de administración
 
-Los claims se asignan desde un entorno administrativo confiable; no se crean documentos `users` en Firestore.
-
-1. Instala Node.js 22 y Firebase CLI. Desde la carpeta `outputs`, ejecuta `firebase login`.
-2. Entra a `functions` e instala dependencias: `npm install`.
-3. Autentica Google Application Default Credentials con una cuenta que tenga permisos IAM para administrar usuarios del proyecto, por ejemplo `gcloud auth application-default login`.
-4. Asigna el primer rol admin usando el UID de Authentication: `npm run set-role -- UID_DEL_USUARIO admin`.
-5. Asigna supervisores: `npm run set-role -- UID_DEL_USUARIO supervisor`. Para retirar un rol usa `npm run set-role -- UID_DEL_USUARIO none`.
-6. El usuario debe cerrar sesión y volver a entrar para obtener el claim actualizado.
-
-El claim `admin` no se puede conceder desde la propia app. La herramienta `set-role.js` usa credenciales administrativas del entorno y no incluye llaves privadas en los archivos.
+No hace falta asignar roles con una cuenta de Google Cloud. Los tres correos indicados en el código reciben permisos administrativos al iniciar sesión con una cuenta de Firebase Authentication cuyo correo esté verificado. Crea las cuentas desde Firebase Console y comparte cada contraseña de forma privada con su titular; no guardes contraseñas en este proyecto. Para agregar o quitar administradores, edita la lista en `app.js`, `firestore.rules` y `functions/index.js`, y vuelve a desplegar.
 
 ## Desplegar
 
