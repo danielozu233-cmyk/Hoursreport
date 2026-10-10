@@ -7,7 +7,6 @@ service cloud.firestore {
 
     function authorizedAdmin() {
       return signedIn()
-        && request.auth.token.email_verified == true
         && request.auth.token.email in [
           'jmjuarez@upana.edu.gt',
           'nozuna@upana.edu.gt',

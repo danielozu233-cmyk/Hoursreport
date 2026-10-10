@@ -20,7 +20,7 @@ const adminEmails = new Set([
 
 function requireSupervisor(request) {
   const email = request.auth?.token?.email?.toLowerCase();
-  if (!request.auth || request.auth.token.email_verified !== true || !adminEmails.has(email)) {
+  if (!request.auth || !adminEmails.has(email)) {
     throw new HttpsError("permission-denied", "Se requiere una cuenta de supervisión autorizada.");
   }
   return request.auth;

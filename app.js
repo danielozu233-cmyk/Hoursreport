@@ -445,10 +445,10 @@ onAuthStateChanged(auth, async (user) => {
   byId("appScreen").classList.add("hidden");
   try {
     const token = await user.getIdTokenResult();
-    if (!token.claims.email_verified || !adminEmails.has((user.email || "").toLowerCase())) {
+    if (!adminEmails.has((user.email || "").toLowerCase())) {
       await signOut(auth);
       byId("loginScreen").classList.remove("hidden");
-      setLoginMessage("Acceso solo para los correos autorizados. Verifica tu correo institucional y vuelve a iniciar sesión.");
+      setLoginMessage("Este correo no está autorizado para el panel de supervisión.");
       return;
     }
     activeRole = "admin";

@@ -33,7 +33,7 @@ Cada evento guarda `eventAt` (fecha/hora en que ocurrieron o se programaron las 
 ## Preparar Firebase Console
 
 1. Abre el proyecto `lmsupana` en [Firebase Console](https://console.firebase.google.com/).
-2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**. En **Authentication → Users**, crea las cuentas `jmjuarez@upana.edu.gt`, `nozuna@upana.edu.gt` y `ccoyoy@upana.edu.gt` con contraseñas iniciales seguras. No habilites registro público. Cada titular debe verificar su correo institucional.
+2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**. Los tres correos autorizados deben existir en **Authentication → Users**; usa sus contraseñas actuales. No se requiere asignar claims/roles ni verificar el correo para entrar.
 3. Crea **Firestore Database** si aún no existe.
 4. Cloud Functions requiere el plan **Blaze** y facturación activa en el proyecto. El runtime configurado es Node.js 22, compatible con Cloud Functions según la [guía oficial de Firebase](https://firebase.google.com/docs/functions/get-started).
 5. Añade el dominio de GitHub Pages (`<tu-usuario>.github.io`) a **Authentication → Settings → Authorized domains**.
@@ -41,7 +41,7 @@ Cada evento guarda `eventAt` (fecha/hora en que ocurrieron o se programaron las 
 
 ## Acceso de administración
 
-No hace falta asignar roles con una cuenta de Google Cloud. Los tres correos indicados en el código reciben permisos administrativos al iniciar sesión con una cuenta de Firebase Authentication cuyo correo esté verificado. Crea las cuentas desde Firebase Console y comparte cada contraseña de forma privada con su titular; no guardes contraseñas en este proyecto. Para agregar o quitar administradores, edita la lista en `app.js`, `firestore.rules` y `functions/index.js`, y vuelve a desplegar.
+No hace falta asignar roles ni cambiar las cuentas existentes. Al iniciar sesión con Firebase Authentication, los tres correos incluidos en `app.js`, `firestore.rules` y `functions/index.js` reciben acceso administrativo. Para agregar o quitar administradores, actualiza esas listas; los cambios de reglas/funciones afectan Firebase cuando el backend se publique.
 
 ## Publicar en GitHub Pages
 
@@ -51,7 +51,7 @@ La página de solicitudes tendrá una URL como `https://<tu-usuario>.github.io/<
 
 ## Firebase y permisos
 
-El código ya identifica estos tres correos como administradores, sin custom claims ni asignación individual de roles. Sin embargo, la lista en GitHub no puede cambiar por sí sola las reglas ni las funciones que ya están desplegadas en Firebase. Si Firebase aún exige el rol anterior, alguien con acceso de administrador al proyecto debe publicar la configuración de backend una vez:
+El código ya identifica estos tres correos como administradores, sin custom claims ni asignación individual de roles. GitHub Pages publica la página, pero no cambia las reglas o funciones desplegadas en Firebase. Si el backend aún exige el rol anterior, el administrador del proyecto deberá actualizarlo una vez:
 
 ```sh
 firebase deploy --only firestore:rules,firestore:indexes,functions
