@@ -9,7 +9,7 @@ Sistema web en español para el control de horas del Call Center UPANA. Incluye 
 - `firebase-config.js`: configuración pública de la aplicación web Firebase del proyecto `lmsupana`.
 - `firestore.rules`: permisos y validaciones para solicitudes y movimientos.
 - `functions/index.js`: revisión transaccional de solicitudes y creación del movimiento asociado.
-- `firebase.json`, `.firebaserc`, `firestore.indexes.json`: configuración para desplegar Functions, reglas y Hosting.
+- `firebase.json`, `.firebaserc`, `firestore.indexes.json`: configuración del backend Firebase; la web se publica en GitHub Pages.
 
 ## Datos y saldo
 
@@ -36,22 +36,28 @@ Cada evento guarda `eventAt` (fecha/hora en que ocurrieron o se programaron las 
 2. En **Authentication → Sign-in method**, habilita **Correo electrónico/contraseña**. En **Authentication → Users**, crea las cuentas `jmjuarez@upana.edu.gt`, `nozuna@upana.edu.gt` y `ccoyoy@upana.edu.gt` con contraseñas iniciales seguras. No habilites registro público. Cada titular debe verificar su correo institucional.
 3. Crea **Firestore Database** si aún no existe.
 4. Cloud Functions requiere el plan **Blaze** y facturación activa en el proyecto. El runtime configurado es Node.js 22, compatible con Cloud Functions según la [guía oficial de Firebase](https://firebase.google.com/docs/functions/get-started).
-5. Añade el dominio de Hosting a **Authentication → Settings → Authorized domains**.
+5. Añade el dominio de GitHub Pages (`<tu-usuario>.github.io`) a **Authentication → Settings → Authorized domains**.
 6. Antes de abrir el formulario al público, registra la app web en **App Check** con reCAPTCHA v3, coloca únicamente la site key pública en `appCheckSiteKey` de `firebase-config.js` y revisa las métricas. Mantén la secret key de reCAPTCHA en su consola; nunca la publiques en el sitio. Después activa la aplicación gradual de App Check para Cloud Firestore. Firebase recomienda inicializar App Check en la app web y revisar métricas antes de exigir tokens ([guía oficial](https://firebase.google.com/docs/app-check/web/recaptcha-provider)).
 
 ## Acceso de administración
 
 No hace falta asignar roles con una cuenta de Google Cloud. Los tres correos indicados en el código reciben permisos administrativos al iniciar sesión con una cuenta de Firebase Authentication cuyo correo esté verificado. Crea las cuentas desde Firebase Console y comparte cada contraseña de forma privada con su titular; no guardes contraseñas en este proyecto. Para agregar o quitar administradores, edita la lista en `app.js`, `firestore.rules` y `functions/index.js`, y vuelve a desplegar.
 
-## Desplegar
+## Publicar en GitHub Pages
 
-Desde la carpeta `outputs`:
+Sube el contenido de `outputs` (archivos HTML, CSS, JavaScript y `firebase-config.js`) a la rama y carpeta que publica tu repositorio. En GitHub configura **Settings → Pages → Deploy from a branch**. Cada `push` publica la web; no se usa Firebase Hosting. Las rutas son relativas y funcionan con repositorios de proyecto.
+
+La página de solicitudes tendrá una URL como `https://<tu-usuario>.github.io/<tu-repositorio>/solicitudes.html`.
+
+## Firebase y permisos
+
+El código ya identifica estos tres correos como administradores, sin custom claims ni asignación individual de roles. Sin embargo, la lista en GitHub no puede cambiar por sí sola las reglas ni las funciones que ya están desplegadas en Firebase. Si Firebase aún exige el rol anterior, alguien con acceso de administrador al proyecto debe publicar la configuración de backend una vez:
 
 ```sh
-firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
+firebase deploy --only firestore:rules,firestore:indexes,functions
 ```
 
-Al terminar, comparte la página pública de solicitudes con agentes: `https://lmsupana.web.app/solicitudes.html`. El panel privado queda en `https://lmsupana.web.app/`.
+Después de eso, los cambios de interfaz se publican únicamente con `push` a GitHub. Si no tienes ni tú ni quien administra el proyecto acceso para actualizar Firebase, no hay una forma segura de habilitar escrituras/aprobaciones solo cambiando la página: Firebase bloqueará las operaciones según sus reglas vigentes.
 
 ## Uso
 

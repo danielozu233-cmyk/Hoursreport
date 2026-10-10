@@ -8,19 +8,5 @@
       "source": "functions",
       "codebase": "default"
     }
-  ],
-  "hosting": {
-    "public": ".",
-    "ignore": [
-      "firebase.json",
-      ".firebaserc",
-      "firestore.rules",
-      "firestore.indexes.json",
-      "functions/**",
-      "**/node_modules/**",
-      "**/.*",
-      "*.zip",
-      "README.md"
-    ]
-  }
+  ]
 }
