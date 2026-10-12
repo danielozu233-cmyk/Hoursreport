@@ -263,7 +263,11 @@ async function decideRequest(decision) {
     showToast(result.data.alreadyProcessed ? "Esta solicitud ya estaba procesada." : decision === "approved" ? "Solicitud aprobada y movimiento registrado." : "Solicitud rechazada.");
   } catch (error) {
     console.error("No se pudo resolver la solicitud", error);
-    byId("reviewMessage").textContent = error.code === "functions/failed-precondition" ? "Otra persona ya resolvió esta solicitud. Actualiza la lista." : "No se pudo guardar la decisión. Revisa tu conexión y vuelve a intentar.";
+    byId("reviewMessage").textContent = error.code === "functions/failed-precondition"
+      ? "Otra persona ya resolvió esta solicitud. Actualiza la lista."
+      : error.code === "functions/internal" || error.code === "functions/unavailable"
+        ? "El servicio de aprobación en Firebase no responde. Debe actualizarse la función reviewHourRequest."
+        : "No se pudo guardar la decisión. Revisa tu conexión y vuelve a intentar.";
     if (error.code === "functions/failed-precondition") {
       await loadRequests();
       const refreshed = hourRequests.find((item) => item.id === selectedRequest.id);

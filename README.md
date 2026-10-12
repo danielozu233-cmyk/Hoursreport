@@ -59,6 +59,8 @@ firebase deploy --only firestore:rules,firestore:indexes,functions
 
 Después de eso, los cambios de interfaz se publican únicamente con `push` a GitHub. Si no tienes ni tú ni quien administra el proyecto acceso para actualizar Firebase, no hay una forma segura de habilitar escrituras/aprobaciones solo cambiando la página: Firebase bloqueará las operaciones según sus reglas vigentes.
 
+Si la consola del navegador muestra un error CORS al aprobar, actualiza específicamente la callable `reviewHourRequest` desde `outputs` con `firebase deploy --only functions:reviewHourRequest`. El código permite el origen `https://danielozu233-cmyk.github.io`; este cambio del backend no se publica con GitHub Pages.
+
 ## Uso
 
 1. Un agente abre `solicitudes.html`, selecciona su extensión, indica el tipo, fecha/hora exacta, duración, motivo y, si desea, datos de contacto.

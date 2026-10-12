@@ -26,7 +26,9 @@ function requireSupervisor(request) {
   return request.auth;
 }
 
-export const reviewHourRequest = onCall(async (request) => {
+export const reviewHourRequest = onCall(
+  { cors: ["https://danielozu233-cmyk.github.io"] },
+  async (request) => {
   const reviewer = requireSupervisor(request);
   const { requestId, decision, decisionNote = "" } = request.data ?? {};
   if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{12,40}$/.test(requestId)) {
@@ -94,4 +96,5 @@ export const reviewHourRequest = onCall(async (request) => {
     });
     return { status: decision, alreadyProcessed: false };
   });
-});
+  }
+);
