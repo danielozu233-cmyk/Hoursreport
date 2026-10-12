@@ -1,7 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, addDoc, query, orderBy, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import { getFirestore, collection, getDocs, addDoc, doc, writeBatch, query, orderBy, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
 import { firebaseConfig, appCheckSiteKey } from "./firebase-config.js";
 
@@ -33,21 +32,17 @@ const agents = [
   { name: "José Pablo Ibañez", ext: "8029" }
 ];
 
+const adminEmails = new Set(["jmjuarez@upana.edu.gt", "nozuna@upana.edu.gt", "ccoyoy@upana.edu.gt"]);
 const app = initializeApp(firebaseConfig);
 if (appCheckSiteKey) initializeAppCheck(app, { provider: new ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, "us-central1");
-const reviewRequestCall = httpsCallable(functions, "reviewHourRequest");
 const byId = (id) => document.getElementById(id);
-const adminEmails = new Set(["jmjuarez@upana.edu.gt", "nozuna@upana.edu.gt", "ccoyoy@upana.edu.gt"]);
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 let movements = [];
-let hourRequests = [];
 let activeUser = null;
-let activeRole = null;
 let selectedAgent = null;
-let selectedRequest = null;
+let selectedMovement = null;
 let toastTimeout;
 
 function showToast(message) {
@@ -55,7 +50,7 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => toast.classList.remove("show"), 2800);
+  toastTimeout = setTimeout(() => toast.classList.remove("show"), 3000);
 }
 
 function openModal(id) {
@@ -65,12 +60,14 @@ function openModal(id) {
 
 function closeModal(id) {
   byId(id).classList.add("hidden");
-  if (document.querySelectorAll(".modal:not(.hidden)").length === 0) document.body.style.overflow = "";
+  if (!document.querySelector(".modal:not(.hidden)")) document.body.style.overflow = "";
 }
 
 function formatDate(value) {
   const date = value?.toDate ? value.toDate() : value instanceof Date ? value : value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("es-GT", { dateStyle: "medium", timeStyle: "short" }).format(date) : "Fecha pendiente";
+  return date && !Number.isNaN(date.getTime())
+    ? new Intl.DateTimeFormat("es-GT", { dateStyle: "medium", timeStyle: "short" }).format(date)
+    : "—";
 }
 
 function formatDuration(minutes) {
@@ -86,15 +83,14 @@ function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function localDateTimeValue(date) {
+  return `${localDateString(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function eventDateOf(movement) {
   if (movement.eventAt?.toDate) return movement.eventAt.toDate();
   if (typeof movement.eventDate === "string" && movement.eventDate.length === 10) return new Date(`${movement.eventDate}T00:00:00`);
   return movement.createdAt?.toDate ? movement.createdAt.toDate() : movement.createdAt ? new Date(movement.createdAt) : null;
-}
-
-function movementDateString(movement) {
-  const date = eventDateOf(movement);
-  return date && !Number.isNaN(date.getTime()) ? localDateString(date) : "";
 }
 
 function signedMinutesOf(movement) {
@@ -102,25 +98,14 @@ function signedMinutesOf(movement) {
   return Math.round((Number(movement.signedHours) || 0) * 60);
 }
 
-function formatEventDate(value) {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split("-").map(Number);
-    return new Intl.DateTimeFormat("es-GT", { dateStyle: "medium" }).format(new Date(year, month - 1, day, 12));
-  }
-  return formatDate(value);
+function actorOf(movement) {
+  return movement.createdByEmail || movement.createdBy || "Registro anterior a la auditoría";
 }
 
-function agentTotals(agent, start = null) {
-  const own = movements.filter((movement) => {
-    if (movement.agentId !== agent.ext) return false;
-    const eventAt = eventDateOf(movement);
-    if (!eventAt || eventAt > new Date()) return false;
-    return !start || movementDateString(movement) >= start;
-  });
-  const positive = own.reduce((sum, movement) => sum + Math.max(0, signedMinutesOf(movement)), 0);
-  const pending = own.reduce((sum, movement) => sum + Math.max(0, -signedMinutesOf(movement)), 0);
-  const history = movements.filter((movement) => movement.agentId === agent.ext);
-  return { own: history, positive, pending, net: positive - pending };
+function auditActionOf(movement) {
+  if (/^ANULACIÓN/i.test(movement.note || "")) return "Anulación";
+  if (/^CORRECCIÓN/i.test(movement.note || "")) return "Corrección";
+  return "Registro";
 }
 
 function periodStart() {
@@ -131,34 +116,40 @@ function periodStart() {
   return null;
 }
 
+function agentTotals(agent, start = null) {
+  const own = movements.filter((movement) => {
+    if (movement.agentId !== agent.ext) return false;
+    const eventAt = eventDateOf(movement);
+    return eventAt && eventAt <= new Date() && (!start || localDateString(eventAt) >= start);
+  });
+  const positive = own.reduce((sum, movement) => sum + Math.max(0, signedMinutesOf(movement)), 0);
+  const pending = own.reduce((sum, movement) => sum + Math.max(0, -signedMinutesOf(movement)), 0);
+  return { own: movements.filter((movement) => movement.agentId === agent.ext), positive, pending, net: positive - pending };
+}
+
 function filteredAgents() {
   const search = byId("searchInput").value.trim().toLocaleLowerCase("es");
   const status = byId("statusFilter").value;
   const start = periodStart();
   return agents.filter((agent) => {
-    const matchesSearch = `${agent.name} ${agent.ext}`.toLocaleLowerCase("es").includes(search);
     const totals = agentTotals(agent, start);
+    const matchesSearch = `${agent.name} ${agent.ext}`.toLocaleLowerCase("es").includes(search);
     const matchesStatus = status === "all" || (status === "positive" && totals.net > 0) || (status === "negative" && totals.net < 0) || (status === "zero" && totals.net === 0);
     return matchesSearch && matchesStatus;
   });
 }
 
 function renderAgents() {
-  const visibleAgents = filteredAgents();
-  const tbody = byId("agentsTable");
-  byId("tableCount").textContent = `Mostrando ${visibleAgents.length} de ${agents.length} agentes`;
-  if (!visibleAgents.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No hay agentes que coincidan con estos filtros.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = visibleAgents.map((agent) => {
+  const visible = filteredAgents();
+  byId("tableCount").textContent = `Mostrando ${visible.length} de ${agents.length} agentes`;
+  byId("agentsTable").innerHTML = visible.length ? visible.map((agent) => {
     const totals = agentTotals(agent, periodStart());
     const initials = agent.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("es");
     const balanceClass = totals.net > 0 ? "positive" : totals.net < 0 ? "negative" : "zero";
     const sign = totals.net > 0 ? "+" : totals.net < 0 ? "−" : "";
     return `<tr><td><div class="agent-cell"><div class="agent-avatar">${escapeHtml(initials)}</div><div class="agent-name"><strong>${escapeHtml(agent.name)}</strong><small>Agente UPANA</small></div></div></td><td class="extension">${agent.ext}</td><td class="hours-positive">${formatDuration(totals.positive)}</td><td class="hours-negative">${formatDuration(totals.pending)}</td><td><span class="balance-pill ${balanceClass}">${sign}${formatDuration(totals.net)}</span></td><td><button class="row-action" data-agent="${agent.ext}" title="Ver historial" aria-label="Ver historial de ${escapeHtml(agent.name)}">↗</button></td></tr>`;
-  }).join("");
-  tbody.querySelectorAll("[data-agent]").forEach((button) => button.addEventListener("click", () => showAgentDetail(button.dataset.agent)));
+  }).join("") : '<tr><td colspan="6" class="empty-state">No hay agentes que coincidan con estos filtros.</td></tr>';
+  byId("agentsTable").querySelectorAll("[data-agent]").forEach((button) => button.addEventListener("click", () => showAgentDetail(button.dataset.agent)));
 }
 
 function showAgentDetail(agentId) {
@@ -171,16 +162,39 @@ function showAgentDetail(agentId) {
   byId("detailPositive").textContent = formatDuration(totals.positive);
   byId("detailPending").textContent = formatDuration(totals.pending);
   byId("detailNet").textContent = `${totals.net > 0 ? "+" : totals.net < 0 ? "−" : ""}${formatDuration(totals.net)}`;
-  const history = totals.own.slice().sort((left, right) => eventDateOf(right) - eventDateOf(left));
+  const history = totals.own.slice().sort((left, right) => (eventDateOf(right)?.getTime() || 0) - (eventDateOf(left)?.getTime() || 0));
   byId("historyList").innerHTML = history.length ? history.map((movement) => {
     const favorable = signedMinutesOf(movement) > 0;
     const eventDate = eventDateOf(movement);
-    const scheduled = eventDate && eventDate > new Date();
-    const amount = `${favorable ? "+" : "−"}${formatDuration(signedMinutesOf(movement))}`;
-    return `<div class="history-item"><div class="history-symbol ${favorable ? "favor" : "deuda"}">${favorable ? "↗" : "↙"}</div><div class="history-copy"><strong>${escapeHtml(movement.note || "Movimiento registrado")}</strong><span>${scheduled ? "Programado para" : "Ocurrió"} ${formatDate(eventDate)} · Registrado ${formatDate(movement.createdAt)} · ${favorable ? "Horas a favor" : "Horas pendientes"}</span></div><div class="history-amount ${favorable ? "favor" : "deuda"}">${amount}</div></div>`;
+    const canCorrect = eventDate && eventDate <= new Date() && Math.abs(signedMinutesOf(movement)) <= 1440;
+    return `<div class="history-item"><div class="history-symbol ${favorable ? "favor" : "deuda"}">${favorable ? "↗" : "↙"}</div><div class="history-copy"><strong>${escapeHtml(movement.note || "Movimiento registrado")}</strong><span>${formatDate(eventDate)} · Registrado ${formatDate(movement.createdAt)} · ${escapeHtml(actorOf(movement))}</span></div><div class="history-amount ${favorable ? "favor" : "deuda"}">${favorable ? "+" : "−"}${formatDuration(signedMinutesOf(movement))}${canCorrect ? `<button class="text-action" data-correct="${escapeHtml(movement.id)}">Corregir / anular</button>` : ""}</div></div>`;
   }).join("") : '<div class="empty-state">Todavía no hay movimientos para este agente.</div>';
-  byId("detailAddButton").classList.remove("hidden");
+  byId("historyList").querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => openCorrection(button.dataset.correct)));
   openModal("detailModal");
+}
+
+function renderAudit() {
+  const search = byId("auditSearch").value.trim().toLocaleLowerCase("es");
+  const actionFilter = byId("auditActionFilter").value;
+  const agentFilter = byId("auditAgentFilter").value;
+  const filtered = movements.filter((movement) => {
+    const agent = agents.find((item) => item.ext === movement.agentId);
+    const action = auditActionOf(movement);
+    const haystack = `${agent?.name || ""} ${movement.agentId} ${movement.id} ${movement.note || ""} ${actorOf(movement)}`.toLocaleLowerCase("es");
+    return (actionFilter === "all" || action === actionFilter)
+      && (agentFilter === "all" || movement.agentId === agentFilter)
+      && (!search || haystack.includes(search));
+  });
+  byId("auditCount").textContent = `${filtered.length} ${filtered.length === 1 ? "actividad" : "actividades"}`;
+  byId("auditTable").innerHTML = filtered.length ? filtered.map((movement) => {
+    const agent = agents.find((item) => item.ext === movement.agentId);
+    const action = auditActionOf(movement);
+    const favorable = signedMinutesOf(movement) > 0;
+    const canCorrect = eventDateOf(movement) && eventDateOf(movement) <= new Date() && Math.abs(signedMinutesOf(movement)) <= 1440;
+    const actionClass = action === "Corrección" ? "correccion" : action === "Anulación" ? "anulacion" : "registro";
+    return `<tr><td>${formatDate(movement.createdAt)}</td><td><span class="audit-action ${actionClass}">${action}</span></td><td><div class="audit-agent"><strong>${escapeHtml(agent?.name || "Agente")}</strong><small>Ext. ${escapeHtml(movement.agentId || "—")}</small></div></td><td>${formatDate(eventDateOf(movement))}</td><td>${escapeHtml(actorOf(movement))}</td><td><span class="audit-detail ${favorable ? "favor" : "deuda"}">${favorable ? "+" : "−"}${formatDuration(signedMinutesOf(movement))}</span><small class="audit-note">#${escapeHtml(movement.id)}</small><small class="audit-note">${escapeHtml(movement.note || "Sin motivo")}</small></td><td>${canCorrect ? `<button class="text-action" data-correct="${escapeHtml(movement.id)}">Revisar</button>` : "—"}</td></tr>`;
+  }).join("") : '<tr><td colspan="7" class="empty-state">No hay actividad con esos filtros.</td></tr>';
+  byId("auditTable").querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => openCorrection(button.dataset.correct)));
 }
 
 async function loadMovements() {
@@ -188,146 +202,44 @@ async function loadMovements() {
     const snapshot = await getDocs(query(collection(db, "movements"), orderBy("createdAt", "desc")));
     movements = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
     renderAgents();
+    renderAudit();
+    byId("lastUpdated").textContent = `Actualizado ${new Intl.DateTimeFormat("es-GT", { timeStyle: "short" }).format(new Date())}`;
   } catch (error) {
-    console.error("No se pudo cargar el historial", error);
-    showToast("No se pudieron cargar los movimientos. Revisa Firestore y sus reglas.");
-    byId("agentsTable").innerHTML = '<tr><td colspan="6" class="empty-state">No fue posible cargar los datos. Verifica que Firestore esté creado y que tu usuario esté autorizado.</td></tr>';
+    console.error("No se pudo cargar el libro de movimientos", error);
+    showToast("No se pudieron cargar los datos. Revisa el acceso a Firestore.");
+    byId("agentsTable").innerHTML = '<tr><td colspan="6" class="empty-state">No fue posible cargar los datos. Verifica tu conexión y autorización.</td></tr>';
+    byId("auditTable").innerHTML = '<tr><td colspan="7" class="empty-state">No fue posible cargar la auditoría.</td></tr>';
   }
-}
-
-async function loadRequests() {
-  try {
-    const snapshot = await getDocs(query(collection(db, "hourRequests"), orderBy("submittedAt", "desc")));
-    hourRequests = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-    renderRequests();
-  } catch (error) {
-    console.error("No se pudieron cargar las solicitudes", error);
-    byId("requestsTable").innerHTML = '<tr><td colspan="6" class="empty-state">No se pudieron cargar las solicitudes. Revisa la autorización de supervisión y las reglas.</td></tr>';
-  }
-}
-
-function renderRequests() {
-  const filter = byId("requestStatusFilter").value;
-  const filtered = hourRequests.filter((item) => filter === "all" || item.status === filter);
-  const pending = hourRequests.filter((item) => item.status === "pending").length;
-  byId("pendingRequestCount").textContent = pending;
-  byId("requestsCount").textContent = `${filtered.length} solicitudes · ${pending} pendientes`;
-  if (!filtered.length) {
-    byId("requestsTable").innerHTML = `<tr><td colspan="6" class="empty-state">${filter === "pending" ? "No hay solicitudes pendientes." : "No hay solicitudes para mostrar."}</td></tr>`;
-    return;
-  }
-  byId("requestsTable").innerHTML = filtered.map((item) => {
-    const agent = agents.find((entry) => entry.ext === item.agentId);
-    const typeLabel = item.requestType === "favor" ? "Horas a favor" : "Tiempo por recuperar";
-    const statusLabel = item.status === "approved" ? "Aprobada" : item.status === "rejected" ? "Rechazada" : "Pendiente";
-    return `<tr><td><div class="request-agent-cell"><strong>${escapeHtml(agent?.name || "Agente")}</strong><span>Ext. ${escapeHtml(item.agentId)}</span></div></td><td><span class="request-type-chip ${item.requestType}">${typeLabel}</span></td><td>${formatDate(item.eventAt)}</td><td>${formatDuration(item.durationMinutes)}</td><td><span class="request-status ${item.status}">${statusLabel}</span></td><td><button class="request-open-button" data-request="${escapeHtml(item.id)}">${item.status === "pending" ? "Revisar" : "Ver detalle"}</button></td></tr>`;
-  }).join("");
-  byId("requestsTable").querySelectorAll("[data-request]").forEach((button) => button.addEventListener("click", () => showRequestDetail(button.dataset.request)));
-}
-
-function showRequestDetail(requestId) {
-  selectedRequest = hourRequests.find((item) => item.id === requestId);
-  if (!selectedRequest) return;
-  const agent = agents.find((entry) => entry.ext === selectedRequest.agentId);
-  byId("requestDetailTitle").textContent = `Solicitud ${selectedRequest.status === "pending" ? "pendiente" : selectedRequest.status === "approved" ? "aprobada" : "rechazada"}`;
-  byId("requestAgentName").textContent = `${agent?.name || "Agente"} · Ext. ${selectedRequest.agentId}`;
-  byId("requestTypeLabel").textContent = selectedRequest.requestType === "favor" ? "Horas a favor · tiempo extra ya trabajado" : "Tiempo por recuperar · horas pendientes";
-  byId("requestEventAt").textContent = formatDate(selectedRequest.eventAt);
-  byId("requestDuration").textContent = formatDuration(selectedRequest.durationMinutes);
-  byId("requestContact").textContent = [selectedRequest.contactName, selectedRequest.contactEmail, selectedRequest.contactPhone].filter(Boolean).join(" · ") || "Sin datos de contacto";
-  byId("requestSubmittedAt").textContent = formatDate(selectedRequest.submittedAt);
-  byId("requestDecidedBy").textContent = selectedRequest.decidedByEmail || selectedRequest.decidedBy || "—";
-  byId("requestDecidedAt").textContent = selectedRequest.decidedAt ? `Decidida ${formatDate(selectedRequest.decidedAt)}` : "";
-  byId("decisionMetadata").classList.toggle("hidden", !selectedRequest.decidedAt);
-  byId("requestReason").textContent = selectedRequest.reason;
-  byId("decisionNote").value = selectedRequest.decisionNote || "";
-  byId("decisionNote").disabled = selectedRequest.status !== "pending";
-  byId("reviewMessage").textContent = "";
-  byId("requestDecisionActions").classList.toggle("hidden", selectedRequest.status !== "pending");
-  openModal("requestDetailModal");
-}
-
-async function decideRequest(decision) {
-  if (!selectedRequest || selectedRequest.status !== "pending") return;
-  const buttons = [byId("approveRequestButton"), byId("rejectRequestButton")];
-  buttons.forEach((button) => { button.disabled = true; });
-  byId("reviewMessage").textContent = "Guardando decisión…";
-  try {
-    const result = await reviewRequestCall({
-      requestId: selectedRequest.id,
-      decision,
-      decisionNote: byId("decisionNote").value.trim()
-    });
-    closeModal("requestDetailModal");
-    await Promise.all([loadRequests(), ...(decision === "approved" ? [loadMovements()] : [])]);
-    showToast(result.data.alreadyProcessed ? "Esta solicitud ya estaba procesada." : decision === "approved" ? "Solicitud aprobada y movimiento registrado." : "Solicitud rechazada.");
-  } catch (error) {
-    console.error("No se pudo resolver la solicitud", error);
-    byId("reviewMessage").textContent = error.code === "functions/failed-precondition"
-      ? "Otra persona ya resolvió esta solicitud. Actualiza la lista."
-      : error.code === "functions/internal" || error.code === "functions/unavailable"
-        ? "El servicio de aprobación en Firebase no responde. Debe actualizarse la función reviewHourRequest."
-        : "No se pudo guardar la decisión. Revisa tu conexión y vuelve a intentar.";
-    if (error.code === "functions/failed-precondition") {
-      await loadRequests();
-      const refreshed = hourRequests.find((item) => item.id === selectedRequest.id);
-      if (refreshed && refreshed.status !== "pending") showRequestDetail(refreshed.id);
-    }
-  } finally {
-    buttons.forEach((button) => { button.disabled = false; });
-  }
-}
-
-function updateRoleControls() {
-  const isSupervisor = ["supervisor", "admin"].includes(activeRole);
-  byId("addMovementTop").classList.toggle("hidden", !isSupervisor);
-  byId("detailAddButton").classList.toggle("hidden", !isSupervisor);
-  byId("userRole").textContent = activeRole === "admin" ? "Administración" : "Supervisor/a";
 }
 
 function populateAgents() {
   byId("agentCountNav").textContent = agents.length;
-  byId("movementAgent").innerHTML = '<option value="">Selecciona un agente</option>' + agents.map((agent) => `<option value="${agent.ext}">${escapeHtml(agent.name)} · ${agent.ext}</option>`).join("");
+  const options = agents.map((agent) => `<option value="${agent.ext}">${escapeHtml(agent.name)} · ${agent.ext}</option>`).join("");
+  byId("movementAgent").innerHTML = '<option value="">Selecciona un agente</option>' + options;
+  byId("auditAgentFilter").innerHTML = '<option value="all">Todos los agentes</option>' + options;
 }
 
 async function exportExcel() {
   const selected = new Set(filteredAgents().map((agent) => agent.ext));
   const start = periodStart();
-  const matchingMovements = movements.filter((movement) => selected.has(movement.agentId) && (!start || movementDateString(movement) >= start));
+  const matching = movements.filter((movement) => selected.has(movement.agentId) && (!start || localDateString(eventDateOf(movement) || new Date(0)) >= start));
   try {
     const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
     const workbook = XLSX.utils.book_new();
     const movementRows = [
-      ["Extensión", "Agente", "Tipo", "Duración (minutos)", "Duración", "Fecha y hora del evento", "Motivo", "Fecha de registro", "Registrado por", "Solicitud"],
-      ...matchingMovements.map((movement) => [
-        movement.agentId,
-        agents.find((agent) => agent.ext === movement.agentId)?.name || "Agente",
-        signedMinutesOf(movement) > 0 ? "A favor" : "Pendiente de recuperar",
-        Math.abs(signedMinutesOf(movement)),
-        formatDuration(signedMinutesOf(movement)),
-        formatDate(eventDateOf(movement)),
-        movement.note || "",
-        formatDate(movement.createdAt),
-        movement.createdByEmail || "",
-        movement.requestId || "Movimiento manual"
-      ])
+      ["Extensión", "Agente", "Tipo", "Duración (minutos)", "Duración", "Fecha y hora del evento", "Motivo / acción", "Fecha de registro", "Registrado por"],
+      ...matching.map((movement) => [movement.agentId, agents.find((agent) => agent.ext === movement.agentId)?.name || "Agente", signedMinutesOf(movement) > 0 ? "A favor" : "Pendiente de recuperar", Math.abs(signedMinutesOf(movement)), formatDuration(signedMinutesOf(movement)), formatDate(eventDateOf(movement)), movement.note || "", formatDate(movement.createdAt), actorOf(movement)])
     ];
-    const movementsSheet = XLSX.utils.aoa_to_sheet(movementRows);
-    movementsSheet["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 22 }, { wch: 19 }, { wch: 18 }, { wch: 25 }, { wch: 38 }, { wch: 25 }, { wch: 30 }, { wch: 24 }];
-    XLSX.utils.book_append_sheet(workbook, movementsSheet, "Movimientos");
-
-    const balanceRows = [
-      ["Extensión", "Agente", "A favor (min)", "A favor", "Pendiente (min)", "Pendiente", "Neto (min)", "Balance neto"],
-      ...filteredAgents().map((agent) => {
-        const totals = agentTotals(agent, start);
-        return [agent.ext, agent.name, totals.positive, formatDuration(totals.positive), totals.pending, formatDuration(totals.pending), totals.net, `${totals.net < 0 ? "−" : totals.net > 0 ? "+" : ""}${formatDuration(totals.net)}`];
-      })
-    ];
-    const balanceSheet = XLSX.utils.aoa_to_sheet(balanceRows);
-    balanceSheet["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 17 }, { wch: 16 }, { wch: 19 }, { wch: 17 }, { wch: 14 }, { wch: 17 }];
-    XLSX.utils.book_append_sheet(workbook, balanceSheet, "Balance por agente");
+    const movementSheet = XLSX.utils.aoa_to_sheet(movementRows);
+    movementSheet["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 22 }, { wch: 19 }, { wch: 18 }, { wch: 25 }, { wch: 44 }, { wch: 25 }, { wch: 34 }];
+    XLSX.utils.book_append_sheet(workbook, movementSheet, "Movimientos y auditoría");
+    const balanceRows = [["Extensión", "Agente", "A favor (min)", "A favor", "Pendiente (min)", "Pendiente", "Neto (min)", "Balance neto"], ...filteredAgents().map((agent) => {
+      const totals = agentTotals(agent, start);
+      return [agent.ext, agent.name, totals.positive, formatDuration(totals.positive), totals.pending, formatDuration(totals.pending), totals.net, `${totals.net < 0 ? "−" : totals.net > 0 ? "+" : ""}${formatDuration(totals.net)}`];
+    })];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(balanceRows), "Balance por agente");
     XLSX.writeFile(workbook, `upana-reporte-horas-${localDateString(new Date())}.xlsx`);
-    showToast(`${matchingMovements.length} movimientos exportados a Excel.`);
+    showToast(`${matching.length} movimientos exportados a Excel.`);
   } catch (error) {
     console.error("No se pudo crear el archivo Excel", error);
     showToast("No se pudo crear el Excel. Revisa tu conexión e inténtalo de nuevo.");
@@ -336,12 +248,60 @@ async function exportExcel() {
 
 function setDefaultMovementDate() {
   const now = new Date();
-  byId("movementDate").value = `${localDateString(now)}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  byId("movementDate").max = byId("movementDate").value;
+  byId("movementDate").value = localDateTimeValue(now);
+  byId("movementDate").max = localDateTimeValue(now);
 }
 
 function setLoginMessage(message) {
   byId("loginMessage").textContent = message;
+}
+
+function movementData({ agentId, type, durationMinutes, eventAt, note }) {
+  return {
+    agentId,
+    type,
+    signedMinutes: type === "favor" ? durationMinutes : -durationMinutes,
+    durationMinutes,
+    eventAt: Timestamp.fromDate(eventAt),
+    note,
+    createdAt: serverTimestamp(),
+    createdBy: activeUser.uid,
+    createdByEmail: activeUser.email || ""
+  };
+}
+
+function openCorrection(movementId) {
+  selectedMovement = movements.find((movement) => movement.id === movementId);
+  if (!selectedMovement) return;
+  const eventAt = eventDateOf(selectedMovement);
+  if (!eventAt || eventAt > new Date() || Math.abs(signedMinutesOf(selectedMovement)) > 1440) {
+    showToast("Ese registro no se puede ajustar desde el panel actual.");
+    return;
+  }
+  const signed = signedMinutesOf(selectedMovement);
+  const agent = agents.find((item) => item.ext === selectedMovement.agentId);
+  byId("correctionOriginal").textContent = `${agent?.name || "Agente"} · ${formatDuration(signed)} · ${formatDate(eventAt)} · ${actorOf(selectedMovement)}`;
+  byId("correctionDate").value = localDateTimeValue(eventAt);
+  byId("correctionDate").max = localDateTimeValue(new Date());
+  byId("correctionHours").value = Math.floor(Math.abs(signed) / 60);
+  byId("correctionMinutes").value = Math.abs(signed) % 60;
+  document.querySelector(`input[name="correctionType"][value="${signed > 0 ? "favor" : "deuda"}"]`).checked = true;
+  byId("correctionNote").value = selectedMovement.note || "";
+  byId("correctionReason").value = "";
+  byId("correctionMessage").textContent = "";
+  byId("replaceOriginal").checked = true;
+  toggleReplacementFields();
+  updateChoiceCards();
+  openModal("correctionModal");
+}
+
+function toggleReplacementFields() {
+  const replace = byId("replaceOriginal").checked;
+  byId("replacementFields").classList.toggle("hidden", !replace);
+  byId("correctionDate").required = replace;
+  byId("correctionHours").required = replace;
+  byId("correctionMinutes").required = replace;
+  byId("correctionNote").required = replace;
 }
 
 byId("loginForm").addEventListener("submit", async (event) => {
@@ -372,39 +332,29 @@ byId("detailAddButton").addEventListener("click", () => {
   updateChoiceCards();
   openModal("movementModal");
 });
+
 byId("movementForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const agent = agents.find((item) => item.ext === byId("movementAgent").value);
   const hours = Number(byId("movementHours").value);
   const minutes = Number(byId("movementMinutes").value);
   const durationMinutes = hours * 60 + minutes;
-  const eventAtDate = new Date(byId("movementDate").value);
+  const eventAt = new Date(byId("movementDate").value);
   const note = byId("movementNote").value.trim();
   const type = new FormData(byId("movementForm")).get("movementType");
-  if (!agent || Number.isNaN(eventAtDate.getTime()) || eventAtDate > new Date() || !Number.isInteger(hours) || hours < 0 || hours > 24 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59 || durationMinutes < 1 || durationMinutes > 1440 || (hours === 24 && minutes > 0) || !note) {
-    byId("movementMessage").textContent = "Revisa agente, fecha y hora (no futuras), duración y motivo.";
+  if (!agent || Number.isNaN(eventAt.getTime()) || eventAt > new Date() || !Number.isInteger(hours) || hours < 0 || hours > 24 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59 || durationMinutes < 1 || durationMinutes > 1440 || (hours === 24 && minutes > 0) || !note) {
+    byId("movementMessage").textContent = "Revisa agente, fecha y hora, duración y motivo.";
     return;
   }
   const button = byId("saveMovementButton");
   button.disabled = true;
   button.textContent = "Guardando…";
-  byId("movementMessage").textContent = "";
   try {
-    await addDoc(collection(db, "movements"), {
-      agentId: agent.ext,
-      type,
-      signedMinutes: type === "favor" ? durationMinutes : -durationMinutes,
-      durationMinutes,
-      eventAt: Timestamp.fromDate(eventAtDate),
-      note,
-      createdAt: serverTimestamp(),
-      createdBy: activeUser.uid,
-      createdByEmail: activeUser.email || ""
-    });
+    await addDoc(collection(db, "movements"), movementData({ agentId: agent.ext, type, durationMinutes, eventAt, note }));
     closeModal("movementModal");
     selectedAgent = agent;
     await loadMovements();
-    showToast("Movimiento registrado correctamente.");
+    showToast("Movimiento registrado y añadido a auditoría.");
     if (!byId("detailModal").classList.contains("hidden")) showAgentDetail(agent.ext);
   } catch (error) {
     console.error("No se pudo guardar el movimiento", error);
@@ -415,23 +365,78 @@ byId("movementForm").addEventListener("submit", async (event) => {
   }
 });
 
+byId("replaceOriginal").addEventListener("change", toggleReplacementFields);
+byId("correctionForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedMovement || !activeUser) return;
+  const replace = byId("replaceOriginal").checked;
+  const reason = byId("correctionReason").value.trim();
+  const replacementAt = new Date(byId("correctionDate").value);
+  const replacementHours = Number(byId("correctionHours").value);
+  const replacementMinutes = Number(byId("correctionMinutes").value);
+  const replacementDuration = replacementHours * 60 + replacementMinutes;
+  const replacementType = new FormData(byId("correctionForm")).get("correctionType");
+  const originalSigned = signedMinutesOf(selectedMovement);
+  if (reason.length < 3 || (replace && (!Number.isFinite(replacementAt.getTime()) || replacementAt > new Date() || !Number.isInteger(replacementHours) || replacementHours < 0 || replacementHours > 24 || !Number.isInteger(replacementMinutes) || replacementMinutes < 0 || replacementMinutes > 59 || replacementDuration < 1 || replacementDuration > 1440 || (replacementHours === 24 && replacementMinutes > 0) || byId("correctionNote").value.trim().length === 0))) {
+    byId("correctionMessage").textContent = "Revisa el motivo y los datos del movimiento corregido.";
+    return;
+  }
+  const button = byId("saveCorrectionButton");
+  button.disabled = true;
+  button.textContent = "Guardando…";
+  try {
+    const batch = writeBatch(db);
+    const originalEventAt = eventDateOf(selectedMovement);
+    const reversalType = originalSigned > 0 ? "deuda" : "favor";
+    batch.set(doc(collection(db, "movements")), movementData({
+      agentId: selectedMovement.agentId,
+      type: reversalType,
+      durationMinutes: Math.abs(originalSigned),
+      eventAt: originalEventAt,
+      note: `ANULACIÓN del registro ${selectedMovement.id}: ${reason}`
+    }));
+    if (replace) {
+      batch.set(doc(collection(db, "movements")), movementData({
+        agentId: selectedMovement.agentId,
+        type: replacementType,
+        durationMinutes: replacementDuration,
+        eventAt: replacementAt,
+        note: `CORRECCIÓN del registro ${selectedMovement.id}: ${byId("correctionNote").value.trim()}`
+      }));
+    }
+    await batch.commit();
+    closeModal("correctionModal");
+    await loadMovements();
+    if (selectedAgent) showAgentDetail(selectedAgent.ext);
+    showToast(replace ? "Corrección guardada en auditoría." : "Registro anulado sin borrar el historial.");
+  } catch (error) {
+    console.error("No se pudo guardar la corrección", error);
+    byId("correctionMessage").textContent = error.code === "permission-denied" ? "Firestore bloqueó la corrección. Revisa las reglas actuales." : "No se pudo guardar la corrección. Inténtalo de nuevo.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Guardar en auditoría";
+  }
+});
+
 function updateChoiceCards() {
   document.querySelectorAll(".choice-card").forEach((card) => card.classList.toggle("selected", card.querySelector("input").checked));
 }
 
-document.querySelectorAll('input[name="movementType"]').forEach((radio) => radio.addEventListener("change", updateChoiceCards));
+document.querySelectorAll('input[name="movementType"], input[name="correctionType"]').forEach((radio) => radio.addEventListener("change", updateChoiceCards));
 document.querySelectorAll("[data-close]").forEach((element) => element.addEventListener("click", () => {
-  const modalId = { detail: "detailModal", movement: "movementModal", requestDetail: "requestDetailModal" }[element.dataset.close];
+  const modalId = { detail: "detailModal", movement: "movementModal", correction: "correctionModal" }[element.dataset.close];
   if (modalId) closeModal(modalId);
 }));
-document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeModal("detailModal"); closeModal("movementModal"); closeModal("requestDetailModal"); } });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") ["detailModal", "movementModal", "correctionModal"].forEach(closeModal);
+});
 byId("searchInput").addEventListener("input", renderAgents);
 byId("statusFilter").addEventListener("change", renderAgents);
 byId("periodFilter").addEventListener("change", renderAgents);
 byId("exportButton").addEventListener("click", exportExcel);
-byId("requestStatusFilter").addEventListener("change", renderRequests);
-byId("approveRequestButton").addEventListener("click", () => decideRequest("approved"));
-byId("rejectRequestButton").addEventListener("click", () => decideRequest("rejected"));
+byId("auditSearch").addEventListener("input", renderAudit);
+byId("auditActionFilter").addEventListener("change", renderAudit);
+byId("auditAgentFilter").addEventListener("change", renderAudit);
 
 populateAgents();
 onAuthStateChanged(auth, async (user) => {
@@ -440,39 +445,28 @@ onAuthStateChanged(auth, async (user) => {
     byId("appScreen").classList.add("hidden");
     byId("loginScreen").classList.remove("hidden");
     movements = [];
-    hourRequests = [];
-    activeRole = null;
     renderAgents();
+    renderAudit();
     return;
   }
   byId("loginScreen").classList.add("hidden");
   byId("appScreen").classList.add("hidden");
-  try {
-    const token = await user.getIdTokenResult();
-    if (!adminEmails.has((user.email || "").toLowerCase())) {
-      await signOut(auth);
-      byId("loginScreen").classList.remove("hidden");
-      setLoginMessage("Este correo no está autorizado para el panel de supervisión.");
-      return;
-    }
-    activeRole = "admin";
-  } catch (error) {
-    console.error("No se pudo verificar el rol de supervisión", error);
+  if (!adminEmails.has((user.email || "").toLowerCase())) {
     await signOut(auth);
     byId("loginScreen").classList.remove("hidden");
-    setLoginMessage("No se pudo verificar tu autorización. Vuelve a iniciar sesión.");
+    setLoginMessage("Este correo no está autorizado para el panel de supervisión.");
     return;
   }
-  byId("loginScreen").classList.add("hidden");
   byId("appScreen").classList.remove("hidden");
   byId("userEmail").textContent = user.email || "Usuario";
   byId("userInitials").textContent = (user.email || "U").slice(0, 1).toLocaleUpperCase("es");
-  updateRoleControls();
-  await Promise.all([loadMovements(), loadRequests()]);
+  byId("userRole").textContent = "Supervisión";
+  await loadMovements();
 });
 
 setInterval(() => {
-  if (!activeRole) return;
+  if (!activeUser) return;
   renderAgents();
+  renderAudit();
   if (!byId("detailModal").classList.contains("hidden") && selectedAgent) showAgentDetail(selectedAgent.ext);
 }, 60000);
